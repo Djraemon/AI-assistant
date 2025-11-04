@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="AI助教RAG系统 - 基于RAG技术的智能教学助理">
+    <meta name="keywords" content="AI助教,RAG,教学助理,大数据分析">
+    <meta name="author" content="AI Teaching Assistant RAG System">
+
+    <title>AI助教RAG系统</title>
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link href="/static/css/style.css" rel="stylesheet">
+
+    <!-- Progressive Web App -->
+    <meta name="theme-color" content="#667eea">
+    <link rel="manifest" href="/static/manifest.json">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <div class="chat-header">
+                <h1>🎓 AI助教RAG系统</h1>
+                <p>基于RAG技术的智能教学助理 - 专注于大数据分析课程</p>
+                <div class="header-info">
+                    <small>
+                        <span class="badge bg-success me-2">在线</span>
+                        <span class="text-muted">支持课程内容解答、概念解释、练习指导</span>
+                    </small>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="main">
+        <div class="container">
+            <div class="chat-container">
+                <!-- Chat Messages Section -->
+                <section class="messages-section" aria-label="对话区域">
+                    <div id="chat-messages" class="chat-messages" role="log" aria-live="polite">
+                        <div class="message ai-message">
+                            <strong>AI助手 🤖:</strong>
+                            <div class="message-text">
+                                您好！我是您的AI教学助手，专门回答大数据分析课程相关问题。
+                                我可以帮助您：
+                                <ul>
+                                    <li>📚 解释课程概念和原理</li>
+                                    <li>📝 总结课程内容</li>
+                                    <li>🎯 解答练习题和疑问</li>
+                                    <li>🔍 提供学习建议</li>
+                                </ul>
+                                请提出您的问题吧！
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Input Section -->
+                <section class="input-section" aria-label="输入区域">
+                    <div class="input-group">
+                        <textarea
+                            id="query-input"
+                            class="form-control"
+                            placeholder="请输入您的问题... (按Enter发送，Shift+Enter换行)"
+                            rows="2"
+                            maxlength="5000"
+                            aria-label="问题输入框"
+                            aria-describedby="input-help">
+                        </textarea>
+                        <button
+                            id="send-button"
+                            class="btn btn-primary"
+                            type="button"
+                            aria-label="发送问题">
+                            <span>发送</span>
+                        </button>
+                    </div>
+                    <small id="input-help" class="text-muted">
+                        提示：按 Enter 发送，Shift+Enter 换行，Ctrl+Enter 快速发送，Esc 清空输入
+                    </small>
+                </section>
+
+                <!-- Control Section -->
+                <section class="control-section" aria-label="控制区域">
+                    <div class="text-center">
+                        <button
+                            id="clear-button"
+                            class="btn btn-secondary me-2"
+                            aria-label="清空对话">
+                            🗑️ 清空对话
+                        </button>
+                        <button
+                            id="settings-button"
+                            class="btn btn-outline-primary"
+                            onclick="toggleSettings()"
+                            aria-label="设置">
+                            ⚙️ 设置
+                        </button>
+                    </div>
+                </section>
+
+                <!-- Settings Panel (Hidden by default) -->
+                <section id="settings-panel" class="settings-section d-none" aria-label="设置面板">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">⚙️ 设置</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label for="model-select" class="form-label">AI模型选择</label>
+                                <select id="model-select" class="form-select">
+                                    <option value="general">通用模型</option>
+                                    <option value="advanced">高级模型</option>
+                                    <option value="fast">快速模型</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="response-length" class="form-label">回答长度</label>
+                                <select id="response-length" class="form-select">
+                                    <option value="concise">简洁</option>
+                                    <option value="detailed" selected>详细</option>
+                                    <option value="comprehensive">全面</option>
+                                </select>
+                            </div>
+
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="enable-evaluation" checked>
+                                <label class="form-check-label" for="enable-evaluation">
+                                    启用回答质量评估
+                                </label>
+                            </div>
+
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" id="enable-feedback" checked>
+                                <label class="form-check-label" for="enable-feedback">
+                                    启用反馈功能
+                                </label>
+                            </div>
+
+                            <button class="btn btn-primary btn-sm" onclick="saveSettings()">
+                                保存设置
+                            </button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="text-center text-muted">
+                <small>
+                    © 2024 AI助教RAG系统 |
+                    <a href="/health" target="_blank" class="text-muted">系统状态</a> |
+                    <a href="#" onclick="showHelp()" class="text-muted">使用帮助</a>
+                </small>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay d-none">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <p>正在加载...</p>
+        </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div class="modal fade" id="helpModal" tabindex="-1" aria-labelledby="helpModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="helpModalLabel">📖 使用帮助</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <h6>🚀 快速开始</h6>
+                    <ul>
+                        <li>在输入框中输入您的问题</li>
+                        <li>按 Enter 键或点击"发送"按钮</li>
+                        <li>AI助手会基于课程资料为您提供详细解答</li>
+                    </ul>
+
+                    <h6>💡 使用技巧</h6>
+                    <ul>
+                        <li><strong>问题要具体</strong>：明确描述您的问题，如"什么是MapReduce算法"</li>
+                        <li><strong>可以追问</strong>：基于回答内容继续提问</li>
+                        <li><strong>善用反馈</strong>：对回答进行评分和反馈，帮助改进系统</li>
+                        <li><strong>查看来源</strong>：系统会显示答案的相关性和完整性评分</li>
+                    </ul>
+
+                    <h6>⌨️ 快捷键</h6>
+                    <ul>
+                        <li><kbd>Enter</kbd> - 发送消息</li>
+                        <li><kbd>Shift + Enter</kbd> - 换行</li>
+                        <li><kbd>Ctrl + Enter</kbd> - 快速发送</li>
+                        <li><kbd>Esc</kbd> - 清空输入框</li>
+                    </ul>
+
+                    <h6>🔧 系统特性</h6>
+                    <ul>
+                        <li>基于RAG技术，答案来自真实课程资料</li>
+                        <li>支持多轮对话和上下文理解</li>
+                        <li>自动评估回答质量</li>
+                        <li>支持用户反馈和评分</li>
+                    </ul>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Custom JS -->
+    <script src="/static/js/app.js"></script>
+
+    <!-- Additional JavaScript -->
+    <script>
+        // Toggle settings panel
+        function toggleSettings() {
+            const panel = document.getElementById('settings-panel');
+            panel.classList.toggle('d-none');
+        }
+
+        // Save settings
+        function saveSettings() {
+            const settings = {
+                model: document.getElementById('model-select').value,
+                responseLength: document.getElementById('response-length').value,
+                enableEvaluation: document.getElementById('enable-evaluation').checked,
+                enableFeedback: document.getElementById('enable-feedback').checked
+            };
+
+            localStorage.setItem('aiAssistantSettings', JSON.stringify(settings));
+            showToast('设置已保存', 'success');
+            toggleSettings();
+        }
+
+        // Load settings
+        function loadSettings() {
+            try {
+                const settings = JSON.parse(localStorage.getItem('aiAssistantSettings'));
+                if (settings) {
+                    document.getElementById('model-select').value = settings.model || 'general';
+                    document.getElementById('response-length').value = settings.responseLength || 'detailed';
+                    document.getElementById('enable-evaluation').checked = settings.enableEvaluation !== false;
+                    document.getElementById('enable-feedback').checked = settings.enableFeedback !== false;
+                }
+            } catch (error) {
+                console.warn('Failed to load settings:', error);
+            }
+        }
+
+        // Show help modal
+        function showHelp() {
+            const helpModal = new bootstrap.Modal(document.getElementById('helpModal'));
+            helpModal.show();
+        }
+
+        // Initialize settings on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSettings();
+        });
+
+        // Toast notification (reused from app.js)
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+            toast.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+            toast.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.transition = 'opacity 0.5s';
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 500);
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

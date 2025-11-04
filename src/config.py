@@ -9,7 +9,7 @@ from typing import List, Optional
 class ModelConfig:
     """Configuration for LLM and embedding models"""
     # Model provider selection: "siliconflow" or "openai_like"
-    provider: str = "openai_like"
+    provider: str = "siliconflow"
 
     # SiliconFlow configuration (existing)
     api_key: str = os.getenv("SILICONFLOW_API_KEY", "")
@@ -18,8 +18,8 @@ class ModelConfig:
     embedding_model: str = "netease-youdao/bce-embedding-base_v1"
 
     # OpenAI-like configuration (phi-3.5-mini)
-    openai_like_api_key: str = "dummy"
-    openai_like_api_base: str = "http://llm.lbzfrombit.icu:8000/v1"
+    openai_like_api_key: str = os.getenv("OPENAI_LIKE_API_KEY", "")
+    openai_like_api_base: str = os.getenv("OPENAI_LIKE_API_BASE", "http://llm.lbzfrombit.icu:8000/v1")
     openai_like_model: str = "phi-3.5-mini"
     openai_like_embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     is_chat_model: bool = True

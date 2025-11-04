@@ -58,7 +58,7 @@ class TeachingQueryEngine:
     def _classify_intent(self, query_str: str) -> str:
         """Classify user query intent using LLM model into two categories: comprehensive or simple."""
         from prompt.prompt_template import query_intent_prompt
-        intent_prompt = query_intent_prompt.format(query_str)
+        intent_prompt = query_intent_prompt.format(query_str=query_str)
         try:
             # 使用当前配置的LLM进行意图识别
             llm = Settings.llm

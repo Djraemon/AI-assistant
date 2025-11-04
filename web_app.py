@@ -1,25 +1,40 @@
-"""Web application for the AI Teaching Assistant using FastAPI."""
+"""
+Web application for the AI Teaching Assistant using FastAPI.
+AI助教RAG系统 - 基于FastAPI的Web应用程序
+"""
 
+# Standard library imports (标准库导入)
 import os
 import sys
 import json
-import datetime
+from datetime import datetime, timezone
 from typing import Optional
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from contextlib import asynccontextmanager
+
+# Third-party imports (第三方库导入)
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from contextlib import asynccontextmanager
 
-# Add parent directory to path to import modules
+# Local imports (本地模块导入)
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from dotenv import load_dotenv
 
-from config import CONFIG
-from data_ingestor import DataIngestor, get_data_stats
-from index_manager import IndexManager
-from query_engine import TeachingQueryEngine
-from evaluation import EvaluationManager
+from src.config import CONFIG
+from src.data_ingestor import DataIngestor, get_data_stats
+from src.index_manager import IndexManager
+from src.query_engine import TeachingQueryEngine
+from src.evaluation import EvaluationManager
+
+# Load environment variables (加载环境变量)
+load_dotenv()
+
+# Set up templates directory
+templates_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src', 'templates')
+os.makedirs(templates_dir, exist_ok=True)
+templates = Jinja2Templates(directory=templates_dir)
 
 
 # Global variables to store the system components
@@ -32,26 +47,42 @@ eval_manager = None
 async def lifespan(app: FastAPI):
     """Initialize the RAG system when the application starts."""
     global rag_system, query_engine, eval_manager
-    
+
     print("Initializing AI Teaching Assistant Web App...")
-    
+
     # Initialize models based on provider configuration
     from llama_index.core import Settings
+
+    # Check API keys
+    siliconflow_api_key = CONFIG.model_config.api_key
+    openai_like_api_key = CONFIG.model_config.openai_like_api_key
 
     if CONFIG.model_config.provider == "openai_like":
         # Use phi-3.5-mini LLM with SiliconFlow embedding (hybrid approach)
         from llama_index.llms.openai_like import OpenAILike
         from llama_index.embeddings.siliconflow import SiliconFlowEmbedding
 
+        if not openai_like_api_key:
+            print("WARNING: OPENAI_LIKE_API_KEY not set. Please set this environment variable.")
+            print("Example: export OPENAI_LIKE_API_KEY='your-api-key-here'")
+            yield
+            return
+
+        if not siliconflow_api_key:
+            print("WARNING: SILICONFLOW_API_KEY not set. Please set this environment variable.")
+            print("Example: export SILICONFLOW_API_KEY='your-siliconflow-api-key'")
+            yield
+            return
+
         Settings.llm = OpenAILike(
             model=CONFIG.model_config.openai_like_model,
             api_base=CONFIG.model_config.openai_like_api_base,
-            api_key=CONFIG.model_config.openai_like_api_key,
+            api_key=openai_like_api_key,
             is_chat_model=CONFIG.model_config.is_chat_model
         )
 
         Settings.embed_model = SiliconFlowEmbedding(
-            api_key=CONFIG.model_config.api_key,
+            api_key=siliconflow_api_key,
             model_name=CONFIG.model_config.embedding_model
         )
         print(f"Initialized with hybrid model:")
@@ -62,13 +93,19 @@ async def lifespan(app: FastAPI):
         from llama_index.embeddings.siliconflow import SiliconFlowEmbedding
         from llama_index.llms.siliconflow import SiliconFlow
 
+        if not siliconflow_api_key:
+            print("WARNING: SILICONFLOW_API_KEY not set. Please set this environment variable.")
+            print("Example: export SILICONFLOW_API_KEY='your-siliconflow-api-key'")
+            yield
+            return
+
         Settings.embed_model = SiliconFlowEmbedding(
-            api_key=CONFIG.model_config.api_key,
+            api_key=siliconflow_api_key,
             model_name=CONFIG.model_config.embedding_model
         )
 
         Settings.llm = SiliconFlow(
-            api_key=CONFIG.model_config.api_key,
+            api_key=siliconflow_api_key,
             model=CONFIG.model_config.llm_model
         )
         print(f"Initialized with SiliconFlow model: {CONFIG.model_config.llm_model}")
@@ -82,17 +119,19 @@ async def lifespan(app: FastAPI):
     
     if not all_nodes:
         print("No data found to process. Please add documents to the data directories.")
+        yield
         return
-    
+
     # Initialize index manager
     index_manager = IndexManager(CONFIG)
-    
+
     # Create or load composite index
     print("Creating/loading index...")
     composite_index = index_manager.create_or_load_composite_index(all_nodes)
-    
+
     if composite_index is None:
         print("Failed to create index. Exiting.")
+        yield
         return
     
     # Initialize query engine
@@ -117,11 +156,6 @@ app = FastAPI(
 static_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 os.makedirs(static_dir, exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
-
-# Set up templates directory
-templates_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
-os.makedirs(templates_dir, exist_ok=True)
-templates = Jinja2Templates(directory=templates_dir)
 
 
 # Pydantic models for request/response
@@ -150,16 +184,43 @@ class QueryResponse(BaseModel):
     evaluation: dict
 
 
-from web_source import index
 @app.get("/", response_class=HTMLResponse)
-async def read_root():
+async def read_root(request: Request):
     """Serve the main page of the web application."""
-    html_content = index.html_content
-    return HTMLResponse(content=html_content)
+    try:
+        return templates.TemplateResponse("index.html", {"request": request})
+    except Exception as e:
+        print(f"Template loading error: {e}")
+        # Return a simple error page if template fails
+        return HTMLResponse(content="""
+        <!DOCTYPE html>
+        <html lang="zh-CN">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>🎓 AI助教RAG系统 - 错误</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 50px; text-align: center; }
+                .error-container { max-width: 600px; margin: 0 auto; }
+                .error-message { color: #dc3545; background: #f8d7da; padding: 20px; border-radius: 5px; }
+            </style>
+        </head>
+        <body>
+            <div class="error-container">
+                <h1>🎓 AI助教RAG系统</h1>
+                <div class="error-message">
+                    <h2>页面加载失败</h2>
+                    <p>抱歉，模板文件加载失败。请联系管理员或稍后重试。</p>
+                    <p><small>错误信息：模板文件未找到或配置错误</small></p>
+                </div>
+            </div>
+        </body>
+        </html>
+        """, status_code=500)
 
 
-@app.post("/api/query", response_model=QueryResponse)
-@app.post("/v1/chat/completions", response_model=QueryResponse)
+@app.post("/api/rag/query", response_model=QueryResponse)
+@app.post("/api/rag/v1/chat/completions", response_model=QueryResponse)
 async def query_endpoint(request: QueryRequest):
     """Process a query and return the response."""
     global query_engine, eval_manager
@@ -183,7 +244,7 @@ async def query_endpoint(request: QueryRequest):
         raise HTTPException(status_code=500, detail=f"Error processing query: {str(e)}")
 
 
-@app.post("/api/feedback")
+@app.post("/api/rag/feedback")
 async def feedback_endpoint(request: FeedbackRequest):
     """Collect feedback for a query-response pair."""
     global eval_manager
@@ -203,7 +264,7 @@ async def feedback_endpoint(request: FeedbackRequest):
         raise HTTPException(status_code=500, detail=f"Error processing feedback: {str(e)}")
 
 
-@app.get("/api/stats")
+@app.get("/api/rag/stats")
 async def get_stats():
     """Get system statistics and performance metrics."""
     global eval_manager
@@ -214,7 +275,7 @@ async def get_stats():
     try:
         performance = eval_manager.get_system_performance()
         # Get data statistics
-        from data_ingestor import DataIngestor
+        from src.data_ingestor import DataIngestor
         data_ingestor = DataIngestor(CONFIG)
         all_nodes = data_ingestor.ingest_all_data()
         data_stats = get_data_stats(all_nodes)
@@ -234,7 +295,7 @@ async def health_check():
     return {"status": "healthy", "message": "AI Teaching Assistant is running"}
 
 
-@app.post("/api/rag/chat/stream")
+@app.post("/api/rag/stream")
 async def stream_chat_endpoint(request: StreamChatRequest):
     """RAG Chat API with Server-Sent Events streaming response."""
     global query_engine, eval_manager
@@ -246,23 +307,25 @@ async def stream_chat_endpoint(request: StreamChatRequest):
         try:
             # Send start event
             yield f"event: start\n"
-            yield f"data: {json.dumps({'type': 'start', 'timestamp': datetime.datetime.utcnow().isoformat()+'Z'})}\n\n"
+            yield f"data: {json.dumps({'type': 'start', 'timestamp': datetime.now(timezone.utc).isoformat()})}\n\n"
+
             # Process the query with streaming
             async for chunk in query_engine.query_stream(request.question):
                 if chunk["type"] == "delta":
                     yield f"event: delta\n"
-                    yield f"data: {json.dumps({'type': 'delta', 'content': chunk['content'], 'timestamp': datetime.datetime.utcnow().isoformat()+'Z'})}\n\n"
+                    yield f"data: {json.dumps({'type': 'delta', 'content': chunk['content'], 'timestamp': datetime.now(timezone.utc).isoformat()})}\n\n"
                 elif chunk["type"] == "sources":
                     yield f"event: sources\n"
-                    yield f"data: {json.dumps({'type': 'sources', 'sources': chunk['sources'], 'timestamp': datetime.datetime.utcnow().isoformat()+'Z'})}\n\n"
+                    yield f"data: {json.dumps({'type': 'sources', 'sources': chunk['sources'], 'timestamp': datetime.now(timezone.utc).isoformat()})}\n\n"
+
             # Send end event
             # For now, just send a placeholder for total tokens
             yield f"event: end\n"
-            yield f"data: {json.dumps({'type': 'end', 'total_tokens': 150, 'timestamp': datetime.datetime.utcnow().isoformat()+'Z'})}\n\n"            
+            yield f"data: {json.dumps({'type': 'end', 'total_tokens': 150, 'timestamp': datetime.now(timezone.utc).isoformat()})}\n\n"
         except Exception as e:
             # Send error event if something goes wrong
             yield f"event: error\n"
-            yield f"data: {json.dumps({'type': 'error', 'message': f'Error processing query: {str(e)}', 'timestamp': datetime.datetime.utcnow().isoformat()+'Z'})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'message': f'Error processing query: {str(e)}', 'timestamp': datetime.now(timezone.utc).isoformat()})}\n\n"
     
     return StreamingResponse(
         event_generator(),

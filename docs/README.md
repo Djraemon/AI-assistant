@@ -100,3 +100,9 @@ embedding_model = "netease-youdao/bce-embedding-base_v1"
 - 文本文件
 - JSON 结构化数据
 - CSV 表格数据
+
+
+
+  export SILICONFLOW_API_KEY=sk-yrmmgcztvxoijeigwmhqqohhafaolagrmlffjuhiifmrdlcg
+  export OPENAI_LIKE_API_KEY=dummy
+  python3 web_app.py
