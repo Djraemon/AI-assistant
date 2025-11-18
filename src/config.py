@@ -8,7 +8,7 @@ from typing import List, Optional
 @dataclass
 class ModelConfig:
     """Configuration for LLM and embedding models"""
-    # Model provider selection: "siliconflow" or "openai_like"
+    # Model provider selection: "siliconflow", "openai_like", or "qwen3"
     provider: str = "siliconflow"
 
     # SiliconFlow configuration (existing)
@@ -19,10 +19,17 @@ class ModelConfig:
 
     # OpenAI-like configuration (phi-3.5-mini)
     openai_like_api_key: str = os.getenv("OPENAI_LIKE_API_KEY", "")
-    openai_like_api_base: str = os.getenv("OPENAI_LIKE_API_BASE", "http://llm.lbzfrombit.icu:8000/v1")
+    openai_like_api_base: str = os.getenv("OPENAI_LIKE_API_BASE", "http://localhost:8000/v1")
     openai_like_model: str = "phi-3.5-mini"
     openai_like_embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     is_chat_model: bool = True
+
+    # Qwen3 model configuration
+    qwen3_model_path: str = "./model-qwen3/Qwen3_vl_thinking"
+    qwen3_device_map: str = "auto"  # "auto", "cpu", "mps", "cuda"
+    qwen3_torch_dtype: str = "bfloat16"  # "float16", "bfloat16", "float32"
+    qwen3_max_new_tokens: int = 1024
+    qwen3_use_lora: bool = False
 
 
 @dataclass

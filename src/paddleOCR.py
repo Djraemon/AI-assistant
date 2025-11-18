@@ -1,17 +1,19 @@
 from paddleocr import PaddleOCRVL
 import os
-pipeline = PaddleOCRVL()
-# pipeline = PaddleOCRVL(use_doc_orientation_classify=True) # 通过 use_doc_orientation_classify 指定是否使用文档方向分类模型
-# pipeline = PaddleOCRVL(use_doc_unwarping=True) # 通过 use_doc_unwarping 指定是否使用文本图像矫正模块
-# pipeline = PaddleOCRVL(use_layout_detection=False) # 通过 use_layout_detection 指定是否使用版面区域检测排序模块
-# 将data/ppt路径下的pdf文件遍历一遍
-# 设置输入和输出路径
+
 def pdf_to_markdown():
-    input_dir = "../data/ppt"
-    output_base_dir = "../data/ppt/markdown"  # 您可以修改为所需的输出路径
+    """
+    将PDF文件转换为Markdown格式的函数
+    该函数会遍历指定目录下的所有PDF文件，并将每个PDF文件转换为Markdown格式保存到对应的输出目录中
+    """
+    # 定义输入目录路径，存储PPT转换后的PDF文件
+    input_dir = "input/ppt"
+    # 定义输出目录的基础路径，转换后的Markdown文件将保存在此目录下的子文件夹中
+    output_base_dir = "output/ppt/markdown"  # 您可以修改为所需的输出路径
     # 确保输出目录存在
     os.makedirs(output_base_dir, exist_ok=True)
-    # 遍历 data/ppt 路径下的所有 PDF 文件
+    
+    # 遍历 input/ppt 路径下的所有 PDF 文件
     for filename in os.listdir(input_dir):
         if filename.lower().endswith('.pdf'):
             # 获取文件名（不含扩展名）
@@ -26,19 +28,22 @@ def pdf_to_markdown():
             
             print(f"Processing {filename}...")
             try:
+                pipeline = PaddleOCRVL()
+                # 使用完整的输入文件路径
                 output = pipeline.predict(
-                    input="/home/suny.ding/make_data/PDFrocessor/PaddleOCR-VL/input/Entity_Linking_An_Issue_to_Extract_Corresponding_Entity_With_Knowledge_Base.pdf",
+                    input=input_path,  # 确保使用完整路径
                     use_layout_detection=True,
                     use_chart_recognition=True,
                     format_block_content=True,
                     visualize=True
-                    )
+                )
                 for res in output:
                     res.print()
-                    res.save_to_json(save_path=f"/home/suny.ding/make_data/PDFrocessor/PaddleOCR-VL/output/json/{base}")
-                    res.save_to_markdown(save_path=f"/home/suny.ding/make_data/PDFrocessor/PaddleOCR-VL/output/markdown/{base}")
-                    res.save_to_html(save_path=f"/home/suny.ding/make_data/PDFrocessor/PaddleOCR-VL/output/html/{base}")
+                    res.save_to_markdown(save_path=output_dir)
             except Exception as e:
                 print(f"Error processing {filename}: {str(e)}")
 
     print("All PDF files processed.")
+
+if __name__ == '__main__':
+    pdf_to_markdown()

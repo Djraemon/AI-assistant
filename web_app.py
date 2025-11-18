@@ -31,10 +31,16 @@ from src.evaluation import EvaluationManager
 # Load environment variables (加载环境变量)
 load_dotenv()
 
+# Set model provider from environment variable if available
+model_provider = os.getenv("RAG_MODEL_PROVIDER", CONFIG.model_config.provider)
+CONFIG.model_config.provider = model_provider
+
 # Set up templates directory
 templates_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src', 'templates')
 os.makedirs(templates_dir, exist_ok=True)
 templates = Jinja2Templates(directory=templates_dir)
+
+print(f"🔧 Using model provider: {CONFIG.model_config.provider}")
 
 
 # Global variables to store the system components
@@ -57,37 +63,259 @@ async def lifespan(app: FastAPI):
     siliconflow_api_key = CONFIG.model_config.api_key
     openai_like_api_key = CONFIG.model_config.openai_like_api_key
 
-    if CONFIG.model_config.provider == "openai_like":
-        # Use phi-3.5-mini LLM with SiliconFlow embedding (hybrid approach)
-        from llama_index.llms.openai_like import OpenAILike
-        from llama_index.embeddings.siliconflow import SiliconFlowEmbedding
+    if CONFIG.model_config.provider == "qwen3":
+        # Use local Qwen3 model with Transformers
+        try:
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+            from llama_index.llms.huggingface import HuggingFaceLLM
+            from llama_index.embeddings.siliconflow import SiliconFlowEmbedding
+            import torch
+            import os
 
-        if not openai_like_api_key:
-            print("WARNING: OPENAI_LIKE_API_KEY not set. Please set this environment variable.")
-            print("Example: export OPENAI_LIKE_API_KEY='your-api-key-here'")
-            yield
-            return
+            model_path = CONFIG.model_config.qwen3_model_path
+            print(f"🔄 Loading local Qwen3 model from: {model_path}")
 
-        if not siliconflow_api_key:
-            print("WARNING: SILICONFLOW_API_KEY not set. Please set this environment variable.")
-            print("Example: export SILICONFLOW_API_KEY='your-siliconflow-api-key'")
-            yield
-            return
+            # Check if model files exist
+            if not os.path.exists(model_path):
+                print(f"❌ Error: Model not found at {model_path}")
+                yield
+                return
 
-        Settings.llm = OpenAILike(
-            model=CONFIG.model_config.openai_like_model,
-            api_base=CONFIG.model_config.openai_like_api_base,
-            api_key=openai_like_api_key,
-            is_chat_model=CONFIG.model_config.is_chat_model
-        )
+            # Determine device and dtype
+            device_map = CONFIG.model_config.qwen3_device_map
+            torch_dtype = CONFIG.model_config.qwen3_torch_dtype
+            if torch_dtype == "float16":
+                torch_dtype = torch.float16
+            elif torch_dtype == "bfloat16":
+                torch_dtype = torch.bfloat16
+            else:
+                torch_dtype = torch.float32
 
-        Settings.embed_model = SiliconFlowEmbedding(
-            api_key=siliconflow_api_key,
-            model_name=CONFIG.model_config.embedding_model
-        )
-        print(f"Initialized with hybrid model:")
-        print(f"  LLM: {CONFIG.model_config.openai_like_model} (OpenAI-like)")
-        print(f"  Embedding: {CONFIG.model_config.embedding_model} (SiliconFlow)")
+            # Auto-detect platform and configure device
+            import platform
+            if platform.system() == "Darwin":  # macOS
+                if torch.backends.mps.is_available() and device_map == "auto":
+                    device_map = "mps"
+                    print("🍎 Using MPS (Metal Performance Shaders) for macOS")
+                elif device_map == "auto":
+                    device_map = "cpu"
+                    print("🍎 Using CPU for macOS (MPS not available)")
+
+            # Load tokenizer
+            tokenizer = AutoTokenizer.from_pretrained(
+                model_path,
+                trust_remote_code=True
+            )
+            print("✅ Qwen3 tokenizer loaded successfully!")
+
+            # Load model - Qwen3VL requires special handling
+            print("📝 Loading Qwen3VL model...")
+            try:
+                from transformers import Qwen3VLForConditionalGeneration, AutoConfig
+
+                # Load the Qwen3VL model
+                model = Qwen3VLForConditionalGeneration.from_pretrained(
+                    model_path,
+                    torch_dtype=torch_dtype,
+                    device_map=device_map,
+                    trust_remote_code=True,
+                    low_cpu_mem_usage=True,
+                    _attn_implementation="flash_attention_2" if device_map != "cpu" else "eager"
+                )
+                print("✅ Qwen3VL model loaded successfully!")
+
+            except ImportError:
+                print("⚠️ Qwen3VL not available in current transformers version")
+                print("🔄 Attempting generic model loading...")
+                try:
+                    model = AutoModelForCausalLM.from_pretrained(
+                        model_path,
+                        torch_dtype=torch_dtype,
+                        device_map=device_map,
+                        trust_remote_code=True,
+                    )
+                except Exception as e:
+                    if "Unrecognized configuration class" in str(e):
+                        print("❌ This model requires transformers >= 4.45.0 with Qwen3VL support")
+                        print("💡 Please upgrade: pip install transformers>=4.45.0")
+                        raise
+                    else:
+                        raise
+            except Exception as e:
+                print(f"❌ Failed to load Qwen3VL model: {e}")
+                print("💡 Try upgrading transformers: pip install transformers>=4.45.0")
+                raise
+
+            # Create HuggingFace LLM wrapper
+            Settings.llm = HuggingFaceLLM(
+                model=model,
+                tokenizer=tokenizer,
+                max_new_tokens=CONFIG.model_config.qwen3_max_new_tokens,
+                generate_kwargs={"temperature": 0.7, "top_p": 0.9, "do_sample": True}
+            )
+
+            # Use SiliconFlow embedding for better performance if available
+            if not siliconflow_api_key:
+                print("WARNING: SILICONFLOW_API_KEY not set. Using fallback embedding model.")
+                from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+                Settings.embed_model = HuggingFaceEmbedding(
+                    model_name="sentence-transformers/all-MiniLM-L6-v2"
+                )
+            else:
+                Settings.embed_model = SiliconFlowEmbedding(
+                    api_key=siliconflow_api_key,
+                    model_name=CONFIG.model_config.embedding_model
+                )
+
+            print(f"✅ Initialized with local Qwen3 model:")
+            print(f"  LLM: Local Qwen3 (Transformers)")
+            print(f"  Embedding: {CONFIG.model_config.embedding_model if siliconflow_api_key else 'HuggingFace'}")
+            print(f"  Device: {device_map}")
+            print(f"  Dtype: {CONFIG.model_config.qwen3_torch_dtype}")
+
+        except Exception as e:
+            print(f"❌ Failed to load local Qwen3 model: {e}")
+            print("⚠️ Falling back to SiliconFlow model...")
+
+            # Fallback to SiliconFlow
+            from llama_index.embeddings.siliconflow import SiliconFlowEmbedding
+            from llama_index.llms.siliconflow import SiliconFlow
+
+            if not siliconflow_api_key:
+                print("WARNING: SILICONFLOW_API_KEY not set.")
+                yield
+                return
+
+            Settings.embed_model = SiliconFlowEmbedding(
+                api_key=siliconflow_api_key,
+                model_name=CONFIG.model_config.embedding_model
+            )
+
+            Settings.llm = SiliconFlow(
+                api_key=siliconflow_api_key,
+                model=CONFIG.model_config.llm_model
+            )
+            print(f"Fallback: Initialized with SiliconFlow model: {CONFIG.model_config.llm_model}")
+
+    elif CONFIG.model_config.provider == "openai_like":
+        # Use local Phi3.5 model with Transformers
+        try:
+            from transformers import AutoModelForCausalLM, AutoTokenizer, AutoModelForSequenceClassification
+            from llama_index.llms.huggingface import HuggingFaceLLM
+            from llama_index.embeddings.siliconflow import SiliconFlowEmbedding
+            import torch
+            import os
+
+            # Model paths
+            model_path = "./model-phi3.5/cn_model"
+            lora_path = "./model-phi3.5/phi3_bigdata_qlora_continued"
+
+            print(f"🔄 Loading local Phi3.5 model from: {model_path}")
+
+            # Check if model files exist
+            if not os.path.exists(model_path):
+                print(f"❌ Error: Model not found at {model_path}")
+                yield
+                return
+
+            # Load tokenizer
+            tokenizer = AutoTokenizer.from_pretrained(
+                model_path,
+                trust_remote_code=True
+            )
+            print("✅ Tokenizer loaded successfully!")
+
+            # Detect platform and configure model loading accordingly
+            import platform
+
+            if platform.system() == "Darwin":  # macOS
+                # Use MPS (Metal Performance Shaders) for macOS
+                if torch.backends.mps.is_available():
+                    device_map = "mps"
+                    print("🍎 Using MPS (Metal Performance Shaders) for macOS")
+                else:
+                    device_map = "cpu"
+                    print("🍎 Using CPU for macOS (MPS not available)")
+
+                model = AutoModelForCausalLM.from_pretrained(
+                    model_path,
+                    torch_dtype=torch.float16,
+                    device_map=device_map,
+                    trust_remote_code=True,
+                    # Don't use 4-bit quantization on macOS
+                )
+            else:
+                # For other platforms (Linux/Windows with CUDA)
+                model = AutoModelForCausalLM.from_pretrained(
+                    model_path,
+                    torch_dtype=torch.float16,
+                    device_map="auto",
+                    trust_remote_code=True,
+                    load_in_4bit=True  # Use 4-bit quantization to reduce memory usage
+                )
+            print("✅ Base model loaded successfully!")
+
+            # Apply LoRA if available
+            if os.path.exists(lora_path):
+                print(f"📌 Applying LoRA from: {lora_path}")
+                try:
+                    from peft import PeftModel
+                    model = PeftModel.from_pretrained(model, lora_path)
+                    print("✅ LoRA applied successfully!")
+                except ImportError:
+                    print("⚠️ peft not installed. Install with: pip install peft")
+                    print("⚠️ Continuing with base model only...")
+                except Exception as e:
+                    print(f"⚠️ Failed to apply LoRA: {e}")
+                    print("⚠️ Continuing with base model only...")
+
+            # Create HuggingFace LLM wrapper
+            Settings.llm = HuggingFaceLLM(
+                model=model,
+                tokenizer=tokenizer,
+                max_new_tokens=512
+            )
+
+            # Use SiliconFlow embedding for better performance
+            if not siliconflow_api_key:
+                print("WARNING: SILICONFLOW_API_KEY not set. Using fallback embedding model.")
+                from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+                Settings.embed_model = HuggingFaceEmbedding(
+                    model_name="sentence-transformers/all-MiniLM-L6-v2"
+                )
+            else:
+                Settings.embed_model = SiliconFlowEmbedding(
+                    api_key=siliconflow_api_key,
+                    model_name=CONFIG.model_config.embedding_model
+                )
+
+            print(f"✅ Initialized with local Phi3.5 model:")
+            print(f"  LLM: Local Phi3.5 (Transformers)")
+            print(f"  Embedding: {CONFIG.model_config.embedding_model if siliconflow_api_key else 'HuggingFace'}")
+
+        except Exception as e:
+            print(f"❌ Failed to load local Phi3.5 model: {e}")
+            print("⚠️ Falling back to SiliconFlow model...")
+
+            # Fallback to SiliconFlow
+            from llama_index.embeddings.siliconflow import SiliconFlowEmbedding
+            from llama_index.llms.siliconflow import SiliconFlow
+
+            if not siliconflow_api_key:
+                print("WARNING: SILICONFLOW_API_KEY not set.")
+                yield
+                return
+
+            Settings.embed_model = SiliconFlowEmbedding(
+                api_key=siliconflow_api_key,
+                model_name=CONFIG.model_config.embedding_model
+            )
+
+            Settings.llm = SiliconFlow(
+                api_key=siliconflow_api_key,
+                model=CONFIG.model_config.llm_model
+            )
+            print(f"Fallback: Initialized with SiliconFlow model: {CONFIG.model_config.llm_model}")
     else:
         # Use SiliconFlow configuration (existing)
         from llama_index.embeddings.siliconflow import SiliconFlowEmbedding
@@ -292,7 +520,60 @@ async def get_stats():
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
-    return {"status": "healthy", "message": "AI Teaching Assistant is running"}
+    return {
+        "status": "healthy",
+        "message": "AI Teaching Assistant is running",
+        "model_provider": CONFIG.model_config.provider
+    }
+
+
+@app.get("/api/rag/model_info")
+async def get_model_info():
+    """Get current model information."""
+    model_info = {
+        "provider": CONFIG.model_config.provider,
+        "model_name": None,
+        "model_type": None,
+        "device": None,
+        "embedding_model": None
+    }
+
+    try:
+        if CONFIG.model_config.provider == "qwen3":
+            model_info.update({
+                "model_name": "Qwen3-VL-4B-Thinking",
+                "model_type": "Local Vision-Language Model",
+                "model_path": CONFIG.model_config.qwen3_model_path,
+                "device_map": CONFIG.model_config.qwen3_device_map,
+                "dtype": CONFIG.model_config.qwen3_torch_dtype,
+                "max_tokens": CONFIG.model_config.qwen3_max_new_tokens
+            })
+        elif CONFIG.model_config.provider == "openai_like":
+            model_info.update({
+                "model_name": CONFIG.model_config.openai_like_model,
+                "model_type": "Local Text Model (Phi3.5)",
+                "device": "Local",
+                "api_base": CONFIG.model_config.openai_like_api_base
+            })
+        else:  # siliconflow
+            model_info.update({
+                "model_name": CONFIG.model_config.llm_model,
+                "model_type": "Cloud Model",
+                "api_base": CONFIG.model_config.api_base_url
+            })
+
+        # Get embedding model info
+        if os.getenv("SILICONFLOW_API_KEY"):
+            model_info["embedding_model"] = CONFIG.model_config.embedding_model
+        else:
+            model_info["embedding_model"] = "HuggingFace Embedding"
+
+        return model_info
+    except Exception as e:
+        return {
+            "error": f"Failed to get model info: {str(e)}",
+            "provider": CONFIG.model_config.provider
+        }
 
 
 @app.post("/api/rag/stream")

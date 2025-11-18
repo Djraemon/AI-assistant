@@ -42,15 +42,24 @@ class QueryEvaluator:
             # Import the necessary LlamaIndex components
             from llama_index.core.evaluation import SemanticSimilarityEvaluator
             from llama_index.llms.siliconflow import SiliconFlow
-            
-            # Initialize the evaluator with the same model as the main system
-            evaluator = SemanticSimilarityEvaluator(
+            from llama_index.core.evaluation import (
+                AnswerRelevancyEvaluator,
+                ContextRelevancyEvaluator,
+            )
+            evaluator = AnswerRelevancyEvaluator(
                 llm=SiliconFlow(
                     api_key=self.config.model_config.api_key,
                     model=self.config.model_config.llm_model
-                ),
-                embed_model=self.config.model_config.embedding_model
+                )
             )
+            # Initialize the evaluator with the same model as the main system
+            # evaluator = SemanticSimilarityEvaluator(
+            #     llm=SiliconFlow(
+            #         api_key=self.config.model_config.api_key,
+            #         model=self.config.model_config.llm_model
+            #     ),
+            #     embed_model=self.config.model_config.embedding_model
+            # )
             
             # Evaluate the semantic similarity between query and response
             eval_result = evaluator.evaluate(

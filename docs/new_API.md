@@ -1,15 +1,16 @@
-# SchoolRAG API 接口文档
+# 🎓 AI助教RAG系统 API 接口文档
 
 ## 📋 系统概述
 
-SchoolRAG 是一个基于 RAG（检索增强生成）技术的 AI 教学助手系统，提供智能问答、流式对话、反馈收集和系统监控等功能。
+AI助教RAG系统是一个基于RAG（检索增强生成）技术的智能教学助手，支持多种LLM模型（包括云服务和本地Phi3.5模型），提供智能问答、流式对话、反馈收集和系统监控等功能。
 
 ### 基本信息
 - **服务地址**: `http://localhost:8001`
 - **API 版本**: `v1.0.0`
-- **技术栈**: FastAPI + Python
+- **技术栈**: FastAPI + Python + LlamaIndex
 - **数据格式**: JSON
 - **流式支持**: Server-Sent Events (SSE)
+- **模型支持**: SiliconFlow云模型 + 本地Phi3.5模型
 
 ---
 
@@ -18,11 +19,11 @@ SchoolRAG 是一个基于 RAG（检索增强生成）技术的 AI 教学助手�
 | 接口分类 | 方法 | 路径 | 功能描述 |
 |---------|------|------|----------|
 | **页面服务** | GET | `/` | 返回 Web 应用主页 |
-| **问答接口** | POST | `/api/query` | 标准 RAG 问答接口 |
-| **兼容接口** | POST | `/v1/chat/completions` | OpenAI API 兼容格式 |
-| **流式接口** | POST | `/api/rag/chat/stream` | SSE 流式对话 ⭐ |
-| **反馈接口** | POST | `/api/feedback` | 用户反馈收集 |
-| **监控接口** | GET | `/api/stats` | 系统性能统计 |
+| **问答接口** | POST | `/api/rag/query` | 标准 RAG 问答接口 |
+| **兼容接口** | POST | `/api/rag/v1/chat/completions` | OpenAI API 兼容格式 |
+| **流式接口** | POST | `/api/rag/stream` | SSE 流式对话 ⭐ |
+| **反馈接口** | POST | `/api/rag/feedback` | 用户反馈收集 |
+| **统计接口** | GET | `/api/rag/stats` | 系统性能统计 |
 | **健康检查** | GET | `/health` | 服务状态检查 |
 
 ---
@@ -32,25 +33,13 @@ SchoolRAG 是一个基于 RAG（检索增强生成）技术的 AI 教学助手�
 ### 1. 主页服务
 
 #### `GET /`
-
 返回 Web 应用的主页面，提供用户交互界面。
-
-**响应示例**:
-```html
-<!DOCTYPE html>
-<html>
-<head><title>AI Teaching Assistant</title></head>
-<body>
-  <!-- Web 应用界面内容 -->
-</body>
-</html>
-```
 
 ---
 
 ### 2. 标准问答接口
 
-#### `POST /api/query`
+#### `POST /api/rag/query`
 
 基础的 RAG 问答接口，返回完整的回答内容和评估结果。
 
@@ -74,10 +63,15 @@ SchoolRAG 是一个基于 RAG（检索增强生成）技术的 AI 教学助手�
   "query": "请解释一下什么是卷积神经网络?",
   "response": "卷积神经网络是一种专门处理网格状数据的深度学习模型...",
   "evaluation": {
+    "query": "请解释一下什么是卷积神经网络?",
+    "response_length": 369,
     "relevance_score": 0.85,
+    "completeness_score": 0.92,
     "accuracy_score": 0.78,
-    "coherence_score": 0.92,
-    "timestamp": "2024-01-20T10:30:05Z"
+    "timestamp": "2025-11-04T21:33:55.858148",
+    "overall_score": 0.85,
+    "response": "卷积神经网络是一种...",
+    "context_provided": false
   }
 }
 ```
@@ -93,18 +87,18 @@ SchoolRAG 是一个基于 RAG（检索增强生成）技术的 AI 教学助手�
 
 ### 3. OpenAI 兼容接口
 
-#### `POST /v1/chat/completions`
+#### `POST /api/rag/v1/chat/completions`
 
 完全兼容 OpenAI ChatGPT API 格式的接口，便于现有应用迁移。
 
-**请求格式**: 与 `/api/query` 相同
-**响应格式**: 与 `/api/query` 相同
+**请求格式**: 与 `/api/rag/query` 相同
+**响应格式**: 与 `/api/rag/query` 相同
 
 ---
 
 ### 4. 流式对话接口 ⭐
 
-#### `POST /api/rag/chat/stream`
+#### `POST /api/rag/stream`
 
 **核心接口** - 使用 Server-Sent Events 技术的实时流式对话，提供流畅的用户体验。
 
@@ -139,13 +133,13 @@ Access-Control-Allow-Origin: *
 1. **开始事件**
 ```
 event: start
-data: {"type": "start", "timestamp": "2024-01-20T10:30:01Z"}
+data: {"type": "start", "timestamp": "2025-11-04T21:30:01Z"}
 ```
 
 2. **增量内容事件** (可多次出现)
 ```
 event: delta
-data: {"type": "delta", "content": "卷积神经网络是一种...", "timestamp": "2024-01-20T10:30:03Z"}
+data: {"type": "delta", "content": "卷积神经网络是一种...", "timestamp": "2025-11-04T21:30:03Z"}
 ```
 
 3. **来源引用事件**
@@ -156,18 +150,18 @@ data: {
   "sources": [
     {
       "node_id": "6.2",
-      "node_name": "TensorFlow",
-      "excerpt": "深度学习框架..."
+      "node_name": "深度学习基础",
+      "excerpt": "卷积神经网络是深度学习的重要模型..."
     }
   ],
-  "timestamp": "2024-01-20T10:30:03Z"
+  "timestamp": "2025-11-04T21:30:03Z"
 }
 ```
 
 4. **结束事件**
 ```
 event: end
-data: {"type": "end", "total_tokens": 150, "timestamp": "2024-01-20T10:30:05Z"}
+data: {"type": "end", "total_tokens": 150, "timestamp": "2025-11-04T21:30:05Z"}
 ```
 
 5. **错误事件** (异常情况)
@@ -176,7 +170,7 @@ event: error
 data: {
   "type": "error",
   "message": "Error processing query: ...",
-  "timestamp": "2024-01-20T10:30:05Z"
+  "timestamp": "2025-11-04T21:30:05Z"
 }
 ```
 
@@ -184,7 +178,7 @@ data: {
 
 ### 5. 用户反馈接口
 
-#### `POST /api/feedback`
+#### `POST /api/rag/feedback`
 
 收集用户对问答质量的反馈，用于持续优化系统性能。
 
@@ -217,7 +211,7 @@ data: {
 
 ### 6. 系统统计接口
 
-#### `GET /api/stats`
+#### `GET /api/rag/stats`
 
 提供系统性能指标和数据统计，用于监控和分析。
 
@@ -226,8 +220,8 @@ data: {
 {
   "performance_metrics": {
     "avg_relevance_score": 0.82,
+    "avg_completeness_score": 0.88,
     "avg_accuracy_score": 0.75,
-    "avg_coherence_score": 0.88,
     "total_queries": 156,
     "avg_response_time": 1.2
   },
@@ -243,12 +237,12 @@ data: {
     }
   },
   "data_stats": {
-    "total_documents": 23,
-    "total_nodes": 1567,
+    "total_documents": 168,
+    "total_nodes": 447,
     "source_breakdown": {
-      "ppt": 8,
-      "practice": 10,
-      "textbook": 5
+      "ppt": 95,
+      "practice": 34,
+      "textbook": 39
     }
   }
 }
@@ -257,8 +251,8 @@ data: {
 **响应参数说明**:
 - **performance_metrics**: 系统性能指标
   - `avg_relevance_score`: 平均相关性得分
+  - `avg_completeness_score`: 平均完整性得分
   - `avg_accuracy_score`: 平均准确性得分
-  - `avg_coherence_score`: 平均连贯性得分
   - `total_queries`: 总查询次数
   - `avg_response_time`: 平均响应时间（秒）
 
@@ -286,6 +280,46 @@ data: {
   "status": "healthy",
   "message": "AI Teaching Assistant is running"
 }
+```
+
+---
+
+## 🤖 模型配置
+
+### 支持的模型类型
+
+#### 1. SiliconFlow 云模型 (默认)
+- **LLM模型**: `Qwen/Qwen2.5-7B-Instruct`
+- **嵌入模型**: `netease-youdao/bce-embedding-base_v1`
+- **API地址**: `https://api.siliconflow.cn/v1/`
+
+#### 2. 本地Phi3.5模型
+- **LLM模型**: `phi-3.5-mini` (本地部署)
+- **嵌入模型**: SiliconFlow云服务 (混合模式)
+- **API地址**: `http://localhost:8000/v1`
+
+### 模型切换
+
+通过修改 `src/config.py` 文件切换模型提供商：
+
+```python
+# 使用云模型 (默认)
+provider: str = "siliconflow"
+
+# 使用本地Phi3.5模型
+provider: str = "openai_like"
+```
+
+### 环境变量配置
+
+**.env 文件配置**:
+```env
+# SiliconFlow 云模型配置
+SILICONFLOW_API_KEY=your_siliconflow_api_key
+
+# 本地Phi3.5模型配置
+OPENAI_LIKE_API_KEY=sk-local-phi3.5
+OPENAI_LIKE_API_BASE=http://localhost:8000/v1
 ```
 
 ---
@@ -337,14 +371,14 @@ import requests
 
 # 发送问题
 response = requests.post(
-    "http://localhost:8001/api/query",
+    "http://localhost:8001/api/rag/query",
     json={"query": "什么是机器学习?"}
 )
 
 result = response.json()
 print(f"问题: {result['query']}")
 print(f"回答: {result['response']}")
-print(f"评分: {result['evaluation']}")
+print(f"评估: {result['evaluation']}")
 ```
 
 #### 流式对话
@@ -354,7 +388,7 @@ import json
 
 # 流式接收回答
 response = requests.post(
-    "http://localhost:8001/api/rag/chat/stream",
+    "http://localhost:8001/api/rag/stream",
     json={
         "user_id": "user123",
         "question": "解释深度学习的基本原理",
@@ -380,7 +414,7 @@ for line in response.iter_lines():
 ```javascript
 // 流式对话
 async function streamChat() {
-    const response = await fetch('/api/rag/chat/stream', {
+    const response = await fetch('/api/rag/stream', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -441,12 +475,12 @@ function handleStreamEvent(data) {
 curl http://localhost:8001/health
 
 # 标准问答
-curl -X POST "http://localhost:8001/api/query" \
+curl -X POST "http://localhost:8001/api/rag/query" \
   -H "Content-Type: application/json" \
   -d '{"query": "什么是神经网络？"}'
 
 # 流式对话
-curl -X POST "http://localhost:8001/api/rag/chat/stream" \
+curl -X POST "http://localhost:8001/api/rag/stream" \
   -H "Content-Type: application/json" \
   -H "Accept: text/event-stream" \
   -d '{
@@ -457,7 +491,7 @@ curl -X POST "http://localhost:8001/api/rag/chat/stream" \
   }'
 
 # 提交反馈
-curl -X POST "http://localhost:8001/api/feedback" \
+curl -X POST "http://localhost:8001/api/rag/feedback" \
   -H "Content-Type: application/json" \
   -d '{
     "query": "什么是机器学习？",
@@ -467,8 +501,30 @@ curl -X POST "http://localhost:8001/api/feedback" \
   }'
 
 # 获取统计信息
-curl http://localhost:8001/api/stats
+curl http://localhost:8001/api/rag/stats
 ```
+
+---
+
+## 📊 性能考虑
+
+### 响应时间
+- **云模型标准问答**: 1-3秒
+- **本地模型标准问答**: 2-5秒
+- **流式对话**: 首字响应 < 1秒，完整输出 3-8秒
+- **健康检查**: < 100ms
+- **统计查询**: 200-500ms
+
+### 并发支持
+- 支持多用户并发访问
+- 流式连接有内存开销，建议控制并发数
+- 本地模型并发能力受硬件限制
+
+### 模型性能对比
+| 模型类型 | 响应速度 | 准确性 | 成本 | 隐私性 |
+|---------|----------|--------|------|--------|
+| SiliconFlow云模型 | 快 | 高 | 按量付费 | 中等 |
+| 本地Phi3.5模型 | 中等 | 中等 | 一次性成本 | 高 |
 
 ---
 
@@ -492,27 +548,56 @@ curl http://localhost:8001/api/stats
 - **系统未初始化**: `"Query engine not initialized"`
 - **查询处理失败**: `"Error processing query: ..."`
 - **评估管理器未初始化**: `"Evaluation manager not initialized"`
+- **本地模型服务不可用**: `"Connection refused to localhost:8000"`
 
 ---
 
-## 📊 性能考虑
+## 🔧 本地模型部署
 
-### 响应时间
-- **标准问答**: 1-3秒
-- **流式对话**: 首字响应 < 1秒，完整输出 2-5秒
-- **健康检查**: < 100ms
-- **统计查询**: 200-500ms
+### Phi3.5模型启动步骤
 
-### 并发支持
-- 支持多用户并发访问
-- 流式连接有内存开销，建议控制并发数
-- 系统会自动管理和优化资源使用
+1. **安装依赖**:
+```bash
+pip install llama-cpp-python
+# GPU版本 (推荐)
+pip install llama-cpp-python --prefer-binary --extra-index-url=https://jllllll.github.io/llama-cpp-python-cuBLAS-wheels/AVX2/cu118
+```
+
+2. **启动Phi3.5 API服务**:
+```bash
+python3 phi3_api_server.py
+```
+
+3. **验证服务**:
+```bash
+curl http://localhost:8000/
+```
+
+4. **启动RAG系统**:
+```bash
+export OPENAI_LIKE_API_KEY=sk-local-phi3.5
+export SILICONFLOW_API_KEY=your_siliconflow_key
+python3 web_app.py
+```
+
+### 本地模型配置文件
+
+**phi3_api_server.py**: Phi3.5 OpenAI兼容API服务器
+**PHI3_SETUP_GUIDE.md**: 详细部署指南
+**start_phi3_service.sh**: 启动脚本
 
 ---
 
-## 🔄 更新日志
+## 🔄 版本更新日志
 
-### v1.0.0 (当前版本)
+### v1.1.0 (当前版本)
+- ✅ 支持本地Phi3.5模型集成
+- ✅ 优化API路径为 `/api/rag/*`
+- ✅ 改进模板文件结构
+- ✅ 增强错误处理机制
+- ✅ 支持混合模式（本地LLM + 云嵌入）
+
+### v1.0.0
 - ✅ 基础问答功能
 - ✅ 流式对话支持
 - ✅ 用户反馈收集
@@ -525,8 +610,10 @@ curl http://localhost:8001/api/stats
 ## 📞 技术支持
 
 如有技术问题或建议，请参考：
-- 项目文档: `/docs/` 目录
-- 配置文件: `config.py`
-- 系统日志: 启动时的控制台输出
+- **项目文档**: `/docs/` 目录
+- **配置文件**: `src/config.py`
+- **本地模型指南**: `PHI3_SETUP_GUIDE.md`
+- **系统日志**: 启动时的控制台输出
+- **API健康检查**: `GET /health`
 
-**注意**: 使用前请确保系统已完全初始化，可通过 `/health` 接口检查状态。
+**重要提示**: 使用前请确保系统已完全初始化，可通过 `/health` 接口检查状态。如需使用本地模型，请先启动Phi3.5 API服务。
