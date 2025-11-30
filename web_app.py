@@ -27,6 +27,7 @@ from src.data_ingestor import DataIngestor, get_data_stats
 from src.index_manager import IndexManager
 from src.query_engine import TeachingQueryEngine
 from src.evaluation import EvaluationManager
+from src.file_scanner import AutoIndexer
 
 # Load environment variables (加载环境变量)
 load_dotenv()
@@ -47,12 +48,13 @@ print(f"🔧 Using model provider: {CONFIG.model_config.provider}")
 rag_system = None
 query_engine = None
 eval_manager = None
+auto_indexer = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize the RAG system when the application starts."""
-    global rag_system, query_engine, eval_manager
+    global rag_system, query_engine, eval_manager, auto_indexer
 
     print("Initializing AI Teaching Assistant Web App...")
 
@@ -365,11 +367,44 @@ async def lifespan(app: FastAPI):
     # Initialize query engine
     query_engine = TeachingQueryEngine(None, CONFIG, composite_index)
     eval_manager = EvaluationManager(CONFIG)
-    
+
+    # Initialize auto indexer
+    auto_indexer = AutoIndexer()
+    auto_indexer.set_rag_components(index_manager, query_engine)
+
+    # Run automatic file scanning and processing
+    print("Running automatic file scanning and processing...")
+    try:
+        auto_index_result = auto_indexer.scan_and_process()
+        scan_result = auto_index_result['scan_result']
+        process_result = auto_index_result['process_result']
+
+        print(f"📂 File scan completed:")
+        print(f"  New files: {len(scan_result['new_files'])}")
+        print(f"  Modified files: {len(scan_result['modified_files'])}")
+        print(f"  Existing files: {len(scan_result['existing_files'])}")
+
+        if process_result['processed_count'] > 0:
+            print(f"  ✅ Processed {process_result['processed_count']} new files successfully")
+            if process_result['processed_files']:
+                print(f"     Files: {', '.join(process_result['processed_files'][:3])}{'...' if len(process_result['processed_files']) > 3 else ''}")
+
+        if 'failed_count' in process_result and process_result['failed_count'] > 0:
+            print(f"  ❌ Failed to process {process_result['failed_count']} files")
+            if process_result['failed_files']:
+                print(f"     Files: {', '.join(process_result['failed_files'][:3])}{'...' if len(process_result['failed_files']) > 3 else ''}")
+
+        if process_result['processed_count'] == 0 and process_result['failed_count'] == 0:
+            print(f"  ℹ️ No new files to process")
+
+    except Exception as e:
+        print(f"⚠️ Auto indexing failed: {e}")
+        print("Continuing with startup...")
+
     print("AI Teaching Assistant Web App initialized successfully!")
-    
+
     yield
-    
+
     print("Shutting down AI Teaching Assistant Web App...")
 
 
